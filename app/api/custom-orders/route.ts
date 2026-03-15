@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { badRequest, jsonNoStore } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
+import { refreshAdmins, refreshFactories, refreshUsers } from "@/lib/realtimeRefresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,13 @@ export async function POST(req: Request) {
   `;
 
   const id = rows[0].id;
+
+  // Realtime refresh signals
+  await Promise.all([
+    refreshAdmins({ resource: "custom-orders", action: "created", id }),
+    refreshFactories({ resource: "custom-orders", action: "created", id }),
+    refreshUsers([buyer_id], { resource: "custom-orders", action: "created", id }),
+  ]);
 
   // Notifications
   try {

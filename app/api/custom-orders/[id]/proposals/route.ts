@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { badRequest, jsonNoStore, toInt } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
+import { refreshAdmins, refreshUsers } from "@/lib/realtimeRefresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,6 +99,35 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   `;
 
   const proposalId = rows[0].id;
+
+  // Realtime refresh: admins see proposals list, factory sees its proposal, buyer may see status changes later
+  // We'll also refresh the buyer who owns this custom order.
+  try {
+    const owners = await sql<{ buyer_id: number }[]>`
+      SELECT buyer_id::int as buyer_id
+      FROM custom_orders
+      WHERE id = ${customOrderId}
+      LIMIT 1
+    `;
+    const buyerId = owners[0]?.buyer_id;
+    await Promise.all([
+      refreshAdmins({
+        resource: "custom-order-proposals",
+        action: "created",
+        id: proposalId,
+      }),
+      refreshUsers(
+        [factory_id, ...(buyerId ? [buyerId] : [])],
+        {
+          resource: "custom-order-proposals",
+          action: "created",
+          id: proposalId,
+        },
+      ),
+    ]);
+  } catch (e) {
+    console.error("Failed to publish proposal refresh", e);
+  }
 
   // If custom order is pending, bump to sourcing
   const current = await sql<{ status: string }[]>`

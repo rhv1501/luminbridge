@@ -1,6 +1,7 @@
 import { sql } from "@/lib/db";
 import { badRequest, jsonNoStore, toInt } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
+import { refreshAdmins, refreshUsers } from "@/lib/realtimeRefresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,12 @@ export async function POST(req: Request) {
   `;
 
   const id = rows[0].id;
+
+  // Realtime refresh signals (for all portals)
+  // - Admins: global order list
+  // - Buyer: their order list
+  // - Factory: their received order list (derived from product.factory_id)
+  // We already query product.factory_id below for notifications; use it here too.
 
   // Notifications
   try {
@@ -70,6 +77,14 @@ export async function POST(req: Request) {
         id,
       );
     }
+
+    await Promise.all([
+      refreshAdmins({ resource: "orders", action: "created", id }),
+      refreshUsers(
+        [buyer_id, ...(product?.factory_id ? [product.factory_id] : [])],
+        { resource: "orders", action: "created", id },
+      ),
+    ]);
   } catch (e) {
     console.error("Failed to create order notifications", e);
   }

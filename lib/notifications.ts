@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { publishUserEventExternal } from "@/lib/realtime";
 
 export async function createNotification(
   userId: number,
@@ -6,8 +7,17 @@ export async function createNotification(
   type?: string,
   relatedId?: number,
 ) {
-  await sql`
+  const rows = await sql<{ id: number }[]>`
     INSERT INTO notifications (user_id, message, type, related_id)
     VALUES (${userId}, ${message}, ${type ?? null}, ${relatedId ?? null})
+    RETURNING id::int as id
   `;
+
+  await publishUserEventExternal(userId, "notifications", {
+    action: "created",
+    id: rows[0]?.id,
+    type: type ?? null,
+    relatedId: relatedId ?? null,
+    ts: Date.now(),
+  });
 }

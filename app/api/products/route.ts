@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { badRequest, jsonNoStore, toInt } from "@/lib/api";
+import { refreshAdmins, refreshUsers } from "@/lib/realtimeRefresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,5 +94,12 @@ export async function POST(req: Request) {
     RETURNING id::int as id
   `;
 
-  return jsonNoStore({ id: rows[0].id });
+  const id = rows[0].id;
+
+  await Promise.all([
+    refreshAdmins({ resource: "products", action: "created", id }),
+    refreshUsers([factory_id], { resource: "products", action: "created", id }),
+  ]);
+
+  return jsonNoStore({ id });
 }

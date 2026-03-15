@@ -1,6 +1,4 @@
-/* eslint-disable no-restricted-globals */
-
-const CACHE_NAME = "lumibridge-pwa-v1";
+const CACHE_NAME = "lumibridge-pwa-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

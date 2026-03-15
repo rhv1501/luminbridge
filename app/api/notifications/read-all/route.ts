@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { badRequest, jsonNoStore } from "@/lib/api";
+import { publishUserEventExternal } from "@/lib/realtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,5 +11,10 @@ export async function PATCH(req: Request) {
   if (!userId) return badRequest("userId required");
 
   await sql`UPDATE notifications SET is_read = TRUE WHERE user_id = ${userId}`;
+
+  await publishUserEventExternal(userId, "notifications", {
+    action: "read-all",
+    ts: Date.now(),
+  });
   return jsonNoStore({ success: true });
 }

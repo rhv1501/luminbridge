@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { jsonNoStore } from "@/lib/api";
+import { refreshAdmins } from "@/lib/realtimeRefresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,5 +40,6 @@ export async function POST(req: Request) {
     `;
   }
 
+  await refreshAdmins({ resource: "settings", action: "updated" });
   return jsonNoStore({ success: true });
 }

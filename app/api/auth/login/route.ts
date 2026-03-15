@@ -1,8 +1,11 @@
+import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { badRequest, jsonNoStore, unauthorized } from "@/lib/api";
+import { badRequest, unauthorized } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -32,5 +35,17 @@ export async function POST(req: Request) {
   `;
 
   if (users.length === 0) return unauthorized("User not found");
-  return jsonNoStore(users[0]);
+
+  const user = users[0];
+  const res = NextResponse.json(user, {
+    headers: { "Cache-Control": "no-store" },
+  });
+  res.cookies.set("lumina_session", JSON.stringify(user), {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE,
+  });
+  return res;
 }

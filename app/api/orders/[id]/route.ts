@@ -1,6 +1,8 @@
 import { sql } from "@/lib/db";
 import { badRequest, jsonNoStore } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
+import { refreshAdmins, refreshUsers } from "@/lib/realtimeRefresh";
+import type { ParameterOrJSON } from "postgres";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +45,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
 
   const setClauses: string[] = [];
-  const values: any[] = [];
+  const values: ParameterOrJSON<never>[] = [];
   let idx = 1;
 
   if (status !== undefined) {
@@ -67,6 +69,33 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (setClauses.length > 0) {
     values.push(orderId);
     await sql.unsafe(`UPDATE orders SET ${setClauses.join(", ")} WHERE id = $${idx}`, values);
+  }
+
+  // Realtime refresh for all impacted portals (admin, buyer, factory)
+  try {
+    const rows = await sql<{
+      buyer_id: number;
+      factory_id: number;
+    }[]>`
+      SELECT
+        o.buyer_id::int as buyer_id,
+        p.factory_id::int as factory_id
+      FROM orders o
+      JOIN products p ON o.product_id = p.id
+      WHERE o.id = ${orderId}
+      LIMIT 1
+    `;
+
+    const r = rows[0];
+    await Promise.all([
+      refreshAdmins({ resource: "orders", action: "updated", id: orderId }),
+      refreshUsers(
+        [r?.buyer_id, r?.factory_id].filter(Boolean) as number[],
+        { resource: "orders", action: "updated", id: orderId },
+      ),
+    ]);
+  } catch (e) {
+    console.error("Failed to publish order refresh", e);
   }
 
   // Notifications
