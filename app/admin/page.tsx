@@ -12,13 +12,13 @@ import AdminPageClient from "@/app/admin/AdminPageClient";
 export default async function AdminPage() {
   const cookieStore = await cookies();
   const session = cookieStore.get("lumina_session");
-  if (!session?.value) redirect("/login");
+  if (!session?.value) redirect("/admin/login");
 
   let user: User;
   try {
     user = JSON.parse(session.value) as User;
   } catch {
-    redirect("/login");
+    redirect("/admin/login");
   }
 
   if (user.role !== "admin") {

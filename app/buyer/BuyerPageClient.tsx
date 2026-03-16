@@ -43,7 +43,7 @@ export default function BuyerPageClient({
       hasNewCustomOrders={hasNewCustomOrders}
       onLogout={async () => {
         await handleLogout();
-        router.replace("/login");
+        router.replace("/buyer/login");
       }}
     >
       <BuyerDashboard

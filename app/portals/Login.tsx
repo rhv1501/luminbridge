@@ -9,16 +9,24 @@ import { Input } from "@/app/ui/Input";
 import { cn } from "@/app/ui/cn";
 import { User as UserType, UserRole } from "@/app/types";
 
-
 export const Login = ({
   onLogin,
   initialRole = "buyer",
+  lockedRole,
+  allowSignup = true,
+  showPortalSwitch,
+  showDemoAccounts = true,
 }: {
   onLogin: (user: UserType) => void;
   initialRole?: UserRole;
+  lockedRole?: UserRole;
+  allowSignup?: boolean;
+  showPortalSwitch?: boolean;
+  showDemoAccounts?: boolean;
 }) => {
   const [isSignup, setIsSignup] = useState(false);
-  const [role, setRole] = useState<UserRole>(initialRole);
+  const effectiveRole = lockedRole ?? initialRole;
+  const [role, setRole] = useState<UserRole>(effectiveRole);
   const [email, setEmail] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [wechatId, setWechatId] = useState("");
@@ -32,30 +40,63 @@ export const Login = ({
     setLoading(true);
     setError("");
     try {
-      const endpoint = isSignup ? "/api/auth/signup" : "/api/auth/login";
-      const body = isSignup
-        ? {
+      if (isSignup) {
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             email,
             role,
             company_name: companyName,
             wechat_id: wechatId,
             mobile_number: mobileNumber,
             whatsapp_number: whatsappNumber,
-          }
-        : { email };
+          }),
+        });
 
-      const res = await fetch(endpoint, {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error || "Signup failed");
+          return;
+        }
+
+        // Create a real session after signup.
+        const loginRes = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, role }),
+        });
+
+        if (!loginRes.ok) {
+          const data = await loginRes.json().catch(() => ({}));
+          setError(data.error || "Unable to start session");
+          return;
+        }
+
+        const user = await loginRes.json();
+        onLogin(user);
+        return;
+      }
+
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ email, role }),
       });
-      if (res.ok) {
-        const user = await res.json();
-        onLogin(user);
-      } else {
-        const data = await res.json();
-        setError(data.error || (isSignup ? "Signup failed" : "Invalid email"));
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const message = data.error || "Invalid email";
+        setError(
+          message === "User not found"
+            ? "User not found. If you're running locally, run npm run db:migrate to create the demo users."
+            : message,
+        );
+        return;
       }
+
+      const user = await res.json();
+      onLogin(user);
     } catch (err) {
       console.error(err);
       setError("Connection error");
@@ -77,37 +118,41 @@ export const Login = ({
           </div>
           <h1 className="text-3xl font-serif font-bold">LuminaBridge</h1>
           <p className="text-zinc-500 mt-2 italic">
-            {role === "factory"
-              ? "Factory Portal"
-              : "Connecting Lighting Factories to Global Markets"}
+            {role === "admin"
+              ? "Admin Portal"
+              : role === "factory"
+                ? "Factory Portal"
+                : "Buyer Portal"}
           </p>
         </div>
 
         <Card className="p-6 sm:p-8">
-          <div className="flex bg-zinc-100 p-1 rounded-lg mb-6">
-            <button
-              onClick={() => setIsSignup(false)}
-              className={cn(
-                "flex-1 py-2 text-sm font-medium rounded-md transition-all",
-                !isSignup
-                  ? "bg-white text-zinc-900 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-700",
-              )}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => setIsSignup(true)}
-              className={cn(
-                "flex-1 py-2 text-sm font-medium rounded-md transition-all",
-                isSignup
-                  ? "bg-white text-zinc-900 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-700",
-              )}
-            >
-              Sign Up
-            </button>
-          </div>
+          {allowSignup && (
+            <div className="flex bg-zinc-100 p-1 rounded-lg mb-6">
+              <button
+                onClick={() => setIsSignup(false)}
+                className={cn(
+                  "flex-1 py-2 text-sm font-medium rounded-md transition-all",
+                  !isSignup
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700",
+                )}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => setIsSignup(true)}
+                className={cn(
+                  "flex-1 py-2 text-sm font-medium rounded-md transition-all",
+                  isSignup
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-700",
+                )}
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignup && (
@@ -182,51 +227,63 @@ export const Login = ({
             </Button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-zinc-100 text-center">
-            <button
-              onClick={() => {
-                setRole(role === "buyer" ? "factory" : "buyer");
-                setIsSignup(false);
-                setError("");
-              }}
-              className="text-sm text-zinc-500 hover:text-zinc-900 underline"
-            >
-              {role === "buyer"
-                ? "Are you a factory? Go to Factory Portal"
-                : "Are you a buyer? Go to Buyer Portal"}
-            </button>
-          </div>
+          {(showPortalSwitch ?? !lockedRole) && (
+            <div className="mt-6 pt-6 border-t border-zinc-100 text-center">
+              <button
+                onClick={() => {
+                  if (lockedRole) return;
+                  setRole(role === "buyer" ? "factory" : "buyer");
+                  setIsSignup(false);
+                  setError("");
+                }}
+                className="text-sm text-zinc-500 hover:text-zinc-900 underline"
+              >
+                {role === "buyer"
+                  ? "Are you a factory? Go to Factory Portal"
+                  : "Are you a buyer? Go to Buyer Portal"}
+              </button>
+            </div>
+          )}
 
-          {!isSignup && (
+          {showDemoAccounts && !isSignup && (
             <div className="mt-6 pt-6 border-t border-zinc-100">
               <p className="text-xs text-zinc-400 text-center uppercase tracking-widest font-bold">
                 Demo Accounts
               </p>
               <div className="grid grid-cols-1 gap-2 mt-4">
-                <button
-                  onClick={() => setEmail("admin@lumina.com")}
-                  className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
-                >
-                  Admin: admin@lumina.com
-                </button>
-                <button
-                  onClick={() => {
-                    setEmail("factory@china.com");
-                    setRole("factory");
-                  }}
-                  className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
-                >
-                  Factory: factory@china.com
-                </button>
-                <button
-                  onClick={() => {
-                    setEmail("buyer@india.com");
-                    setRole("buyer");
-                  }}
-                  className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
-                >
-                  Buyer: buyer@india.com
-                </button>
+                {(lockedRole ? lockedRole === "admin" : true) && (
+                  <button
+                    onClick={() => {
+                      setEmail("admin@lumina.com");
+                      if (!lockedRole) setRole("admin");
+                    }}
+                    className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
+                  >
+                    Admin: admin@lumina.com
+                  </button>
+                )}
+                {(lockedRole ? lockedRole === "factory" : true) && (
+                  <button
+                    onClick={() => {
+                      setEmail("factory@china.com");
+                      if (!lockedRole) setRole("factory");
+                    }}
+                    className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
+                  >
+                    Factory: factory@china.com
+                  </button>
+                )}
+                {(lockedRole ? lockedRole === "buyer" : true) && (
+                  <button
+                    onClick={() => {
+                      setEmail("buyer@india.com");
+                      if (!lockedRole) setRole("buyer");
+                    }}
+                    className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
+                  >
+                    Buyer: buyer@india.com
+                  </button>
+                )}
               </div>
             </div>
           )}

@@ -12,13 +12,13 @@ import BuyerPageClient from "@/app/buyer/BuyerPageClient";
 export default async function BuyerPage() {
   const cookieStore = await cookies();
   const session = cookieStore.get("lumina_session");
-  if (!session?.value) redirect("/login");
+  if (!session?.value) redirect("/buyer/login");
 
   let user: User;
   try {
     user = JSON.parse(session.value) as User;
   } catch {
-    redirect("/login");
+    redirect("/buyer/login");
   }
 
   if (user.role !== "buyer") {

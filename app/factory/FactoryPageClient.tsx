@@ -36,7 +36,7 @@ export default function FactoryPageClient({
       hasNewCustomOrders={hasNewCustomOrders}
       onLogout={async () => {
         await handleLogout();
-        router.replace("/login");
+        router.replace("/factory/login");
       }}
     >
       <FactoryDashboard

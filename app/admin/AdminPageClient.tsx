@@ -43,7 +43,7 @@ export default function AdminPageClient({
       hasNewCustomOrders={hasNewCustomOrders}
       onLogout={async () => {
         await handleLogout();
-        router.replace("/login");
+        router.replace("/admin/login");
       }}
     >
       <AdminDashboard

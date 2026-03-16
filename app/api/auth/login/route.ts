@@ -10,6 +10,7 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const email = body?.email as string | undefined;
+  const requestedRole = body?.role as string | undefined;
   if (!email) return badRequest("email required");
 
   const users = await sql<{
@@ -37,6 +38,14 @@ export async function POST(req: Request) {
   if (users.length === 0) return unauthorized("User not found");
 
   const user = users[0];
+
+  // If a role was provided (portal-scoped login), enforce it.
+  // This prevents logging into a different portal by accident and avoids
+  // setting a session cookie for the wrong role.
+  if (requestedRole && user.role !== requestedRole) {
+    return unauthorized("Not authorized for this portal");
+  }
+
   const res = NextResponse.json(user, {
     headers: { "Cache-Control": "no-store" },
   });

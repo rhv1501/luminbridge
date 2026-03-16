@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { User } from "@/app/types";
 import PortalLoginClient from "@/app/login/PortalLoginClient";
 
-export default async function LoginPage() {
+export default async function AdminLoginPage() {
   const cookieStore = await cookies();
   const session = cookieStore.get("lumina_session");
   if (session?.value) {
@@ -16,5 +16,12 @@ export default async function LoginPage() {
       // invalid cookie – fall through to show login
     }
   }
-  return <PortalLoginClient role="buyer" allowSignup={true} />;
+
+  return (
+    <PortalLoginClient
+      role="admin"
+      allowSignup={false}
+      showAdminPortalLinks={true}
+    />
+  );
 }

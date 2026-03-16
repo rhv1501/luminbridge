@@ -15,6 +15,7 @@ export async function POST(req: Request) {
 
   if (!email) return badRequest("email required");
   if (!role) return badRequest("role required");
+  if (role === "admin") return badRequest("Admin signup is disabled");
 
   try {
     const users = await sql<{

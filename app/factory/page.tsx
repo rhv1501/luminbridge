@@ -11,13 +11,13 @@ import FactoryPageClient from "@/app/factory/FactoryPageClient";
 export default async function FactoryPage() {
   const cookieStore = await cookies();
   const session = cookieStore.get("lumina_session");
-  if (!session?.value) redirect("/login");
+  if (!session?.value) redirect("/factory/login");
 
   let user: User;
   try {
     user = JSON.parse(session.value) as User;
   } catch {
-    redirect("/login");
+    redirect("/factory/login");
   }
 
   if (user.role !== "factory") {
