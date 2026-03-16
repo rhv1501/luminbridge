@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db";
+import { isTransientDbError, sql, withDbRetry } from "@/lib/db";
 import { badRequest, unauthorized, serverError } from "@/lib/api";
 import { verifyPassword } from "@/lib/auth";
 
@@ -7,12 +7,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
-
-function isTransientDbError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: string }).code;
-  return code === "ETIMEDOUT" || code === "ECONNRESET" || code === "EAI_AGAIN";
-}
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -56,18 +50,13 @@ export async function POST(req: Request) {
 
   let users: UserRow[];
   try {
-    users = await query();
+    users = await withDbRetry(query);
   } catch (err) {
     if (isTransientDbError(err)) {
-      try {
-        await new Promise((r) => setTimeout(r, 300));
-        users = await query();
-      } catch {
-        return serverError("Database is temporarily unavailable. Please try again in a moment.");
-      }
-    } else {
-      return serverError("Unable to sign in right now. Please try again.");
+      return serverError("Database is temporarily unavailable. Please try again in a moment.");
     }
+
+    return serverError("Unable to sign in right now. Please try again.");
   }
 
   if (users!.length === 0) return unauthorized("User not found");

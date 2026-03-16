@@ -1,4 +1,4 @@
-import { sql } from "@/lib/db";
+import { isTransientDbError, sql, withDbRetry } from "@/lib/db";
 import { badRequest, jsonNoStore, serverError } from "@/lib/api";
 import { generateVerificationToken } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
@@ -27,32 +27,13 @@ async function sendVerificationEmail(req: Request, email: string, token: string)
   });
 }
 
-function isTransientDbError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const maybeCode = (error as { code?: string }).code;
-  return (
-    maybeCode === "ETIMEDOUT" ||
-    maybeCode === "ECONNRESET" ||
-    maybeCode === "EAI_AGAIN"
-  );
-}
-
-async function withDbRetry<T>(task: () => Promise<T>) {
-  try {
-    return await task();
-  } catch (error) {
-    if (!isTransientDbError(error)) throw error;
-    // One quick retry to absorb short-lived serverless DB wake-up blips.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    return task();
-  }
-}
-
 async function notifyAdminsRefresh() {
   try {
-    const admins = await sql<{ id: number }[]>`
-      SELECT id::int as id FROM users WHERE role = 'admin'
-    `;
+    const admins = await withDbRetry(() =>
+      sql<{ id: number }[]>`
+        SELECT id::int as id FROM users WHERE role = 'admin'
+      `,
+    );
     await Promise.all(
       admins.map((a) =>
         publishUserEventExternal(a.id, "refresh", { reason: "new-signup" }),
