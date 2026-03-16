@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Globe } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { Card } from "@/app/ui/Card";
 import { Button } from "@/app/ui/Button";
 import { Input } from "@/app/ui/Input";
@@ -32,13 +33,18 @@ export const Login = ({
   const [wechatId, setWechatId] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [password, setPassword] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const searchParams = useSearchParams();
+  const verifiedParam = searchParams.get("verified");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setSuccessMessage("");
     try {
       if (isSignup) {
         const res = await fetch("/api/auth/signup", {
@@ -60,33 +66,28 @@ export const Login = ({
           return;
         }
 
-        // Create a real session after signup.
-        const loginRes = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, role }),
-        });
+        const payload = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
 
-        if (!loginRes.ok) {
-          const data = await loginRes.json().catch(() => ({}));
-          setError(data.error || "Unable to start session");
-          return;
-        }
-
-        const user = await loginRes.json();
-        onLogin(user);
+        setSuccessMessage(
+          payload.message ||
+            "Account created. Check your email and verify your account before login.",
+        );
+        setIsSignup(false);
+        setPassword("");
         return;
       }
 
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role }),
+        body: JSON.stringify({ email, password, role }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const message = data.error || "Invalid email";
+        const message = data.error || "Sign in failed. Please try again.";
         setError(
           message === "User not found"
             ? "User not found. If you're running locally, run npm run db:migrate to create the demo users."
@@ -180,6 +181,19 @@ export const Login = ({
               required
             />
 
+            {!isSignup && (
+              <Input
+                label="Password"
+                type="password"
+                placeholder="Enter password"
+                value={password}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setPassword(e.target.value)
+                }
+                required
+              />
+            )}
+
             {isSignup && role === "factory" && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
@@ -215,6 +229,17 @@ export const Login = ({
               />
             )}
 
+            {(verifiedParam === "1" || successMessage) && (
+              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2">
+                {successMessage ||
+                  "Email verified. Your request is now waiting for admin approval."}
+              </p>
+            )}
+            {verifiedParam === "invalid" && !successMessage && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">
+                Verification link is invalid or expired. Please sign up again.
+              </p>
+            )}
             {error && <p className="text-sm text-red-600">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading
@@ -255,6 +280,7 @@ export const Login = ({
                   <button
                     onClick={() => {
                       setEmail("admin@lumina.com");
+                      setPassword("demo12345");
                       if (!lockedRole) setRole("admin");
                     }}
                     className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
@@ -266,6 +292,7 @@ export const Login = ({
                   <button
                     onClick={() => {
                       setEmail("factory@china.com");
+                      setPassword("demo12345");
                       if (!lockedRole) setRole("factory");
                     }}
                     className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"
@@ -277,6 +304,7 @@ export const Login = ({
                   <button
                     onClick={() => {
                       setEmail("buyer@india.com");
+                      setPassword("demo12345");
                       if (!lockedRole) setRole("buyer");
                     }}
                     className="text-xs text-zinc-600 hover:text-zinc-900 text-left px-2 py-1 rounded hover:bg-zinc-50 transition-colors"

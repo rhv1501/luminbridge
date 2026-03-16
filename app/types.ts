@@ -8,6 +8,30 @@ export interface User {
   wechat_id?: string;
   mobile_number?: string;
   whatsapp_number?: string;
+  must_change_password?: boolean;
+}
+
+export type ApprovalStatus =
+  | 'pending_verification'
+  | 'pending'
+  | 'approved'
+  | 'disapproved';
+
+export interface AccountRequest {
+  id: number;
+  email: string;
+  role: 'buyer' | 'factory';
+  company_name?: string | null;
+  wechat_id?: string | null;
+  mobile_number?: string | null;
+  whatsapp_number?: string | null;
+  email_verified: boolean;
+  approval_status: ApprovalStatus;
+  approval_note?: string | null;
+  must_change_password: boolean;
+  created_at: string;
+  approved_at?: string | null;
+  disapproved_at?: string | null;
 }
 
 export interface Product {

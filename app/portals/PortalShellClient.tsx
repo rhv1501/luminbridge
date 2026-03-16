@@ -46,9 +46,53 @@ export default function PortalShellClient({
   children,
 }: PortalShellClientProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
   const userInitials = initials(user);
   const badge = roleBadge[user.role] ?? "bg-zinc-100 text-zinc-500";
   const label = roleLabel[user.role] ?? user.role;
+
+  const submitPasswordChange = async () => {
+    setPasswordError(null);
+    setPasswordMessage(null);
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirm password do not match");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setPasswordError(payload?.error || "Unable to change password");
+        return;
+      }
+      setPasswordMessage("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch {
+      setPasswordError("Network error while changing password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   // Never allow the mobile drawer to remain open on desktop.
   useEffect(() => {
@@ -102,6 +146,13 @@ export default function PortalShellClient({
                   </span>
                 </div>
               </div>
+
+              <button
+                onClick={() => setChangePwdOpen(true)}
+                className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors focus:outline-none rounded-lg px-2 py-1"
+              >
+                Change Password
+              </button>
 
               <button
                 onClick={onLogout}
@@ -211,6 +262,12 @@ export default function PortalShellClient({
               {/* Sign out */}
               <div className="px-5 pb-6 pt-4 border-t border-zinc-100">
                 <button
+                  onClick={() => setChangePwdOpen(true)}
+                  className="w-full mb-2 py-2.5 rounded-lg border border-zinc-200 text-zinc-700 text-sm font-semibold hover:bg-zinc-50 transition-colors"
+                >
+                  Change password
+                </button>
+                <button
                   onClick={() => {
                     setDrawerOpen(false);
                     onLogout();
@@ -222,6 +279,84 @@ export default function PortalShellClient({
                 </button>
               </div>
             </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {changePwdOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50"
+              onClick={() => setChangePwdOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="fixed z-50 inset-0 flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-md bg-white rounded-xl border border-zinc-200 p-5 space-y-3">
+                <h3 className="text-lg font-semibold">Change Password</h3>
+                {user.must_change_password && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
+                    You are using a temporary password. Please set a new one.
+                  </p>
+                )}
+                {passwordMessage && (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded p-2">
+                    {passwordMessage}
+                  </p>
+                )}
+                {passwordError && (
+                  <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded p-2">
+                    {passwordError}
+                  </p>
+                )}
+                <input
+                  type="password"
+                  placeholder="Current password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg"
+                />
+                <input
+                  type="password"
+                  placeholder="New password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg"
+                />
+                <input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg"
+                />
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    className="flex-1 py-2 rounded-lg border border-zinc-300 text-sm"
+                    onClick={() => setChangePwdOpen(false)}
+                    disabled={changingPassword}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 py-2 rounded-lg bg-zinc-900 text-white text-sm disabled:opacity-60"
+                    onClick={submitPasswordChange}
+                    disabled={changingPassword}
+                  >
+                    {changingPassword ? "Saving..." : "Update"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </>
         )}
       </AnimatePresence>

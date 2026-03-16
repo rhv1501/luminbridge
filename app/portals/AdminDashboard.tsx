@@ -19,7 +19,7 @@ import { Card } from "@/app/ui/Card";
 import { Button } from "@/app/ui/Button";
 import { Input } from "@/app/ui/Input";
 import { cn } from "@/app/ui/cn";
-import { Order, Product, Settings } from "@/app/types";
+import { AccountRequest, Order, Product, Settings } from "@/app/types";
 import { NavigateDetail, ProductFormValues } from "@/app/portals/types";
 import { SkeletonCardGrid } from "@/app/ui/Skeleton";
 
@@ -65,7 +65,7 @@ export const AdminDashboard = ({
   const [error, setError] = useState<string | null>(null);
   const didInitialFetch = useRef(!!initialProducts);
   const [activeTab, setActiveTab] = useState<
-    "products" | "orders" | "custom-orders" | "settings"
+    "products" | "orders" | "custom-orders" | "accounts" | "settings"
   >("products");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [selectedCustomOrder, setSelectedCustomOrder] = useState<
@@ -94,21 +94,27 @@ export const AdminDashboard = ({
     useState<number | null>(null);
   const [publishingProposalConfirmingId, setPublishingProposalConfirmingId] =
     useState<number | null>(null);
+  const [accounts, setAccounts] = useState<AccountRequest[]>([]);
+  const [updatingAccountId, setUpdatingAccountId] = useState<number | null>(
+    null,
+  );
 
   const fetchData = async () => {
     try {
-      const [pRes, oRes, sRes, coRes] = await Promise.all([
+      const [pRes, oRes, sRes, coRes, aRes] = await Promise.all([
         fetch("/api/products?role=admin"),
         fetch("/api/orders?role=admin"),
         fetch("/api/settings"),
         fetch("/api/custom-orders?role=admin"),
+        fetch("/api/admin/accounts"),
       ]);
-      if (!pRes.ok || !oRes.ok || !sRes.ok || !coRes.ok)
+      if (!pRes.ok || !oRes.ok || !sRes.ok || !coRes.ok || !aRes.ok)
         throw new Error("fetch failed");
       setProducts(await pRes.json());
       setOrders(await oRes.json());
       setSettings(await sRes.json());
       setCustomOrders(await coRes.json());
+      setAccounts(await aRes.json());
       setIsLoading(false);
       setError(null);
     } catch {
@@ -118,7 +124,16 @@ export const AdminDashboard = ({
   };
 
   useEffect(() => {
-    if (!didInitialFetch.current) fetchData();
+    if (!didInitialFetch.current) {
+      fetchData();
+    } else {
+      // Server-side initial data was provided (products/orders/etc.) but accounts
+      // are not fetched server-side — fetch them now.
+      fetch("/api/admin/accounts")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data) => setAccounts(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    }
     didInitialFetch.current = true;
   }, []);
 
@@ -460,6 +475,43 @@ export const AdminDashboard = ({
     }
   };
 
+  const updateAccountStatus = async (
+    accountId: number,
+    action: "approve" | "disapprove",
+  ) => {
+    if (updatingAccountId) return;
+    const note =
+      action === "disapprove"
+        ? window.prompt("Optional disapproval reason", "") || ""
+        : window.prompt("Optional approval note", "") || "";
+
+    setUpdatingAccountId(accountId);
+    try {
+      const res = await fetch(`/api/admin/accounts/${accountId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, note }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        showToast(payload?.error || "Failed to update account status");
+        return;
+      }
+      showToast(
+        action === "approve"
+          ? "Account approved and credentials sent"
+          : "Account disapproved",
+      );
+      await fetchData();
+    } catch {
+      showToast("Network error while updating account");
+    } finally {
+      setUpdatingAccountId(null);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-8 relative">
       <AnimatePresence>
@@ -482,29 +534,40 @@ export const AdminDashboard = ({
           </p>
         </div>
         <div className="flex bg-zinc-100 p-1 rounded-lg w-full sm:w-auto overflow-x-auto">
-          {(["products", "orders", "custom-orders", "settings"] as const).map(
-            (tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "px-4 py-1.5 rounded-md text-sm font-medium transition-all capitalize relative whitespace-nowrap flex-shrink-0",
-                  activeTab === tab
-                    ? "bg-white text-zinc-900 shadow-sm"
-                    : "text-zinc-500 hover:text-zinc-700",
-                )}
-              >
-                {tab.replace("-", " ")}
-                {tab === "orders" && hasNewOrders(orders) && (
+          {(
+            [
+              "products",
+              "orders",
+              "custom-orders",
+              "accounts",
+              "settings",
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "px-4 py-1.5 rounded-md text-sm font-medium transition-all capitalize relative whitespace-nowrap flex-shrink-0",
+                activeTab === tab
+                  ? "bg-white text-zinc-900 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700",
+              )}
+            >
+              {tab.replace("-", " ")}
+              {tab === "orders" && hasNewOrders(orders) && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+              {tab === "custom-orders" && hasNewCustomOrders(customOrders) && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+              {tab === "accounts" &&
+                accounts.some(
+                  (a) => a.email_verified && a.approval_status === "pending",
+                ) && (
                   <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
                 )}
-                {tab === "custom-orders" &&
-                  hasNewCustomOrders(customOrders) && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-                  )}
-              </button>
-            ),
-          )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1569,6 +1632,80 @@ export const AdminDashboard = ({
           </div>
         )}
       </AnimatePresence>
+
+      {!isLoading && !error && activeTab === "accounts" && (
+        <div className="space-y-4">
+          {accounts.length === 0 && (
+            <Card className="p-6 text-sm text-zinc-500">
+              No buyer/factory accounts found.
+            </Card>
+          )}
+          {accounts.map((account) => (
+            <Card key={account.id} className="p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold">{account.email}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded uppercase font-bold bg-zinc-100 text-zinc-700">
+                      {account.role}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] px-2 py-0.5 rounded uppercase font-bold",
+                        account.approval_status === "approved" &&
+                          "bg-emerald-100 text-emerald-700",
+                        account.approval_status === "pending" &&
+                          "bg-amber-100 text-amber-700",
+                        account.approval_status === "pending_verification" &&
+                          "bg-blue-100 text-blue-700",
+                        account.approval_status === "disapproved" &&
+                          "bg-red-100 text-red-700",
+                      )}
+                    >
+                      {account.approval_status.replace("_", " ")}
+                    </span>
+                  </div>
+                  <p className="text-sm text-zinc-600">
+                    {account.company_name || "No company name"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Email Verified: {account.email_verified ? "Yes" : "No"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Created: {new Date(account.created_at).toLocaleString()}
+                  </p>
+                  {account.approval_note && (
+                    <p className="text-xs text-zinc-500">
+                      Last note: {account.approval_note}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    className="text-xs"
+                    onClick={() => updateAccountStatus(account.id, "approve")}
+                    loading={updatingAccountId === account.id}
+                    disabled={!account.email_verified}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    className="text-xs"
+                    variant="outline"
+                    onClick={() =>
+                      updateAccountStatus(account.id, "disapprove")
+                    }
+                    loading={updatingAccountId === account.id}
+                  >
+                    Disapprove
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {!isLoading && !error && activeTab === "settings" && (
         <Card className="p-6 sm:p-8 max-w-2xl mx-auto">
